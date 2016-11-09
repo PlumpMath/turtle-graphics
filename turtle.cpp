@@ -2,7 +2,6 @@
 #include <SDL.h>
 #include <boost/coroutine2/all.hpp>
 #include <cmath>
-#include <iostream>
 #include <tuple>
 #include <vector>
 
@@ -10,6 +9,7 @@ class Turtle
 {
 public:
   Turtle();
+  ~Turtle();
   static Turtle &instance();
   void back(float);
   void background(Color);
@@ -37,7 +37,7 @@ private:
   SDL_Renderer *renderer;
   void yeld();
   void move(float x1, float y1, float x2, float y2);
-  typedef boost::coroutines2::coroutine<void> coro_t;
+  typedef boost::coroutines2::coroutine<int> coro_t;
   coro_t::push_type sink;
   std::vector<std::tuple<float, float, float, float, Color> > drawing;
   void loop(coro_t::pull_type &p);
@@ -119,6 +119,14 @@ Turtle::Turtle():
        })
 {
 }
+Turtle::~Turtle()
+{
+  while (sink)
+  {
+    sink(3);
+  }
+}
+
 void Turtle::back(float value)
 {
   forward(-value);
@@ -137,9 +145,9 @@ void Turtle::move(float x1, float y1, float x2, float y2)
 {
   if (sink)
   {
-    if (isVisible)
+    if (isPenDown)
       drawing.push_back(std::make_tuple(x1, y1, x2, y2, pen));
-    sink();
+    sink(1);
   }
   else
     throw std::runtime_error("sink");
@@ -160,18 +168,24 @@ void Turtle::forward(float value)
 {
   if (value == 0.0f)
     return;
-  auto dx = cos(direction * Pi / 180.0f);
-  auto dy = sin(direction * Pi / 180.0f);
-  auto newX = x + cos(direction * Pi / 180.0f) * value;
-  auto newY = y + sin(direction * Pi / 180.0f) * value;
+  auto d = direction;
+  if (value < 0)
+  {
+    d = d + 180;
+    value *= -1;
+  }
+  auto dx = cos(d * Pi / 180.0f);
+  auto dy = sin(d * Pi / 180.0f);
+  auto newX = x + cos(d * Pi / 180.0f) * value;
+  auto newY = y + sin(d * Pi / 180.0f) * value;
   auto sz = drawing.size();
   auto oldX = x;
   auto oldY = y;
   while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
   {
     move(x, y, x + dx, y + dy);
-    x += dx * 0.5f;
-    y += dy * 0.5f;
+    x += dx;
+    y += dy;
   }
   drawing.resize(sz);
   move(oldX, oldY, newX, newY);
@@ -190,9 +204,9 @@ void Turtle::left(float value)
   {
     yeld();
     if (value > 0)
-      direction -= 0.5f;
+      direction -= 1.0f;
     else
-      direction += 0.5f;
+      direction += 1.0f;
   }
   direction = newDirection;
 }
@@ -227,6 +241,8 @@ void Turtle::setXY(float newX, float newY)
   if (dx == 0 && dy == 0)
     return;
   auto sz = drawing.size();
+  auto oldX = x;
+  auto oldY = y;
   while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
   {
     move(x, y, x + dx, y + dy);
@@ -234,7 +250,7 @@ void Turtle::setXY(float newX, float newY)
     y += dy * 0.5f;
   }
   drawing.resize(sz);
-  move(x, y, newX, newY);
+  move(oldX, oldY, newX, newY);
   x = newX;
   y = newY;
 
@@ -251,7 +267,7 @@ void Turtle::showTurtle()
 void Turtle::yeld()
 {
   if (sink)
-    sink();
+    sink(2);
   else
     throw std::runtime_error("sink");
 }
@@ -265,7 +281,7 @@ void Turtle::loop(coro_t::pull_type &p)
   SDL_SetWindowPosition(window, 65, 126);
   SDL_Event e;
   bool done = false;
-  while (!done && p)
+  while (!done)
   {
     while (SDL_PollEvent(&e))
     {
@@ -274,7 +290,10 @@ void Turtle::loop(coro_t::pull_type &p)
       break;
     }
     if (p)
+    {
+      p.get();
       p();
+    }
     setRenderDrawColor(bg);
     SDL_RenderClear(renderer);
     for (const auto &i: drawing)
@@ -301,6 +320,7 @@ void Turtle::loop(coro_t::pull_type &p)
       SDL_RenderDrawLine(renderer, x3, y3, x, y);
     }
     SDL_RenderPresent(renderer);
+    SDL_Delay(1);
   }
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
