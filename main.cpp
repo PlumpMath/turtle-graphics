@@ -6,12 +6,13 @@ int main()
 {
   try
   {
-    float a = -1;
+    float a = -90;
+    penColor(Color::Orange);
     for(;;)
     {
-      forward(1);
+      forward(10);
       left(a);
-      a += 0.01;
+      a += 0.1;
     }
   }
   catch (std::exception &e)

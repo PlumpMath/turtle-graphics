@@ -1,50 +1,109 @@
 #include "turtle.hpp"
-#include <SDL2/SDL.h>
+#include <SDL.h>
 #include <boost/coroutine2/all.hpp>
 #include <cmath>
 #include <iostream>
 #include <tuple>
+#include <vector>
 
 class Turtle
 {
 public:
   Turtle();
   static Turtle &instance();
+  void back(float);
+  void background(Color);
+  void clearScreen();
+  void draw();
   void forward(float);
+  void hideTurtle();
   void left(float);
+  void penColor(Color);
+  void penDown();
+  void penUp();
   void right(float);
-  void backward(float);
+  void setX(float);
+  void setXY(float, float);
+  void setY(float);
+  void showTurtle();
 private:
   float x = 1280 / 2;
   float y = 720 / 2;
   float direction = -90;
+  Color pen = Color::Black;
+  Color bg = Color::White;
+  bool isVisible = true;
+  bool isPenDown = true;
+  SDL_Renderer *renderer;
   void yeld();
-  void draw(float x1, float y1, float x2, float y2);
-  typedef boost::coroutines2::coroutine<std::tuple<float, float, float, float> > coro_t;
+  void move(float x1, float y1, float x2, float y2);
+  typedef boost::coroutines2::coroutine<void> coro_t;
   coro_t::push_type sink;
+  std::vector<std::tuple<float, float, float, float, Color> > drawing;
   void loop(coro_t::pull_type &p);
+  void setRenderDrawColor(Color);
 };
 
+void back(float value)
+{
+  Turtle::instance().back(value);
+}
+void background(Color value)
+{
+  Turtle::instance().background(value);
+}
+void clearScreen()
+{
+  Turtle::instance().clearScreen();
+}
+void draw()
+{
+  Turtle::instance().draw();
+}
 void forward(float value)
 {
   Turtle::instance().forward(value);
 }
-
+void hideTurtle()
+{
+  Turtle::instance().hideTurtle();
+}
 void left(float value)
 {
   Turtle::instance().left(value);
 }
-
+void penColor(Color value)
+{
+  Turtle::instance().penColor(value);
+}
+void penDown()
+{
+  Turtle::instance().penDown();
+}
+void penUp()
+{
+  Turtle::instance().penUp();
+}
 void right(float value)
 {
   Turtle::instance().right(value);
 }
-
-void backward(float value)
+void setX(float value)
 {
-  Turtle::instance().backward(value);
+  Turtle::instance().setX(value);
 }
-
+void setXY(float x, float y)
+{
+  Turtle::instance().setXY(x, y);
+}
+void setY(float value)
+{
+  Turtle::instance().setY(value);
+}
+void showTurtle()
+{
+  Turtle::instance().showTurtle();
+}
 Turtle &Turtle::instance()
 {
   static Turtle turtle;
@@ -53,6 +112,50 @@ Turtle &Turtle::instance()
 
 const auto Pi = 3.1415926f;
 
+Turtle::Turtle():
+  sink([this](coro_t::pull_type &p)
+       {
+         loop(p);
+       })
+{
+}
+void Turtle::back(float value)
+{
+  forward(-value);
+}
+void Turtle::background(Color value)
+{
+  bg = value;
+  yeld();
+}
+void Turtle::clearScreen()
+{
+  drawing.clear();
+  yeld();
+}
+void Turtle::move(float x1, float y1, float x2, float y2)
+{
+  if (sink)
+  {
+    if (isVisible)
+      drawing.push_back(std::make_tuple(x1, y1, x2, y2, pen));
+    sink();
+  }
+  else
+    throw std::runtime_error("sink");
+}
+void Turtle::draw()
+{
+  drawing.clear();
+  x = 1280 / 2;
+  y = 720 / 2;
+  direction = -90;
+  pen = Color::Black;
+  bg = Color::White;
+  isVisible = true;
+  isPenDown = true;
+  yeld();
+}
 void Turtle::forward(float value)
 {
   if (value == 0.0f)
@@ -61,58 +164,94 @@ void Turtle::forward(float value)
   auto dy = sin(direction * Pi / 180.0f);
   auto newX = x + cos(direction * Pi / 180.0f) * value;
   auto newY = y + sin(direction * Pi / 180.0f) * value;
+  auto sz = drawing.size();
+  auto oldX = x;
+  auto oldY = y;
   while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
   {
-    draw(x, y, x + dx, y + dy);
-    x += dx * 0.1f;
-    y += dy * 0.1f;
+    move(x, y, x + dx, y + dy);
+    x += dx * 0.5f;
+    y += dy * 0.5f;
   }
+  drawing.resize(sz);
+  move(oldX, oldY, newX, newY);
   x = newX;
   y = newY;
 }
-
-Turtle::Turtle():
-  sink([this](coro_t::pull_type &p)
-       {
-         loop(p);
-       })
+void Turtle::hideTurtle()
 {
+  isVisible = false;
+  yeld();
 }
-
-
 void Turtle::left(float value)
 {
   auto newDirection = direction - value;
-  while (value * (newDirection - direction) > 0)
+  while (value * (newDirection - direction) < 0)
   {
     yeld();
-    direction += 1.0f;
+    if (value > 0)
+      direction -= 0.5f;
+    else
+      direction += 0.5f;
   }
   direction = newDirection;
 }
-
+void Turtle::penColor(Color value)
+{
+  pen = value;
+  yeld();
+}
+void Turtle::penDown()
+{
+  isPenDown = true;
+  yeld();
+}
+void Turtle::penUp()
+{
+  isPenDown = false;
+  yeld();
+}
 void Turtle::right(float value)
 {
   left(-value);
 }
-
-void Turtle::backward(float value)
+void Turtle::setX(float value)
 {
-  forward(-value);
+  setXY(value, y);
 }
+void Turtle::setXY(float newX, float newY)
+{
+  auto distance = hypot(newX - x, newY - y);
+  auto dx = (newX - x) / distance;
+  auto dy = (newY - y) / distance;
+  if (dx == 0 && dy == 0)
+    return;
+  auto sz = drawing.size();
+  while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
+  {
+    move(x, y, x + dx, y + dy);
+    x += dx * 0.5f;
+    y += dy * 0.5f;
+  }
+  drawing.resize(sz);
+  move(x, y, newX, newY);
+  x = newX;
+  y = newY;
 
+}
+void Turtle::setY(float value)
+{
+  setXY(x, value);
+}
+void Turtle::showTurtle()
+{
+  isVisible = true;
+  yeld();
+}
 void Turtle::yeld()
 {
   if (sink)
-    sink(std::make_tuple(0.0f, 0.0f, 0.0f, 0.0f));
-  else
-    throw std::runtime_error("sink");
-}
-
-void Turtle::draw(float x1, float y1, float x2, float y2)
-{
-  if (sink)
-    sink(std::make_tuple(x1, y1, x2, y2));
+    sink();
   else
     throw std::runtime_error("sink");
 }
@@ -120,14 +259,12 @@ void Turtle::draw(float x1, float y1, float x2, float y2)
 void Turtle::loop(coro_t::pull_type &p)
 {
   SDL_Window *window;
-  SDL_Renderer *renderer;
   if (SDL_Init(SDL_INIT_VIDEO) != 0)
     throw std::runtime_error("SDL_Init(SDL_INIT_VIDEO)");
   SDL_CreateWindowAndRenderer(1280, 720, SDL_WINDOW_BORDERLESS, &window, &renderer);
   SDL_SetWindowPosition(window, 65, 126);
   SDL_Event e;
   bool done = false;
-  std::vector<std::tuple<float, float, float, float> > drawing;
   while (!done && p)
   {
     while (SDL_PollEvent(&e))
@@ -136,43 +273,61 @@ void Turtle::loop(coro_t::pull_type &p)
         done = true;
       break;
     }
-    drawing.push_back(p.get());
-    p();
-    SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
+    if (p)
+      p();
+    setRenderDrawColor(bg);
     SDL_RenderClear(renderer);
-    SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xff);
     for (const auto &i: drawing)
     {
+      setRenderDrawColor(std::get<4>(i));
       SDL_RenderDrawLine(renderer,
                          std::get<0>(i),
                          std::get<1>(i),
                          std::get<2>(i),
                          std::get<3>(i));
     }
-    SDL_RenderPresent(renderer);
-  }
-  while (!done)
-  {
-    while (SDL_PollEvent(&e))
+    if (isVisible)
     {
-      if (e.type == SDL_QUIT)
-        done = true;
-      break;
-    }
-    SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
-    SDL_RenderClear(renderer);
-    SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xff);
-    for (const auto &i: drawing)
-    {
-      SDL_RenderDrawLine(renderer,
-                         std::get<0>(i),
-                         std::get<1>(i),
-                         std::get<2>(i),
-                         std::get<3>(i));
+      setRenderDrawColor(pen);
+      auto x1 = x + 20 * cos((direction - 120.0f) * Pi / 180.0f);
+      auto y1 = y + 20 * sin((direction - 120.0f) * Pi / 180.0f);
+      auto x2 = x + 20 * cos((direction) * Pi / 180.0f);
+      auto y2 = y + 20 * sin((direction) * Pi / 180.0f);
+      auto x3 = x + 20 * cos((direction + 120.0f) * Pi / 180.0f);
+      auto y3 = y + 20 * sin((direction + 120.0f) * Pi / 180.0f);
+      SDL_RenderDrawLine(renderer, x, y, x1, y1);
+      SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+      SDL_RenderDrawLine(renderer, x2, y2, x3, y3);
+      SDL_RenderDrawLine(renderer, x3, y3, x, y);
     }
     SDL_RenderPresent(renderer);
   }
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
   SDL_Quit();
+}
+
+void Turtle::setRenderDrawColor(Color value)
+{
+  switch (value)
+  {
+  case Color::Black:
+    SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xff);
+    break;
+  case Color::White:
+    SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
+    break;
+  case Color::Green:
+    SDL_SetRenderDrawColor(renderer, 0x00, 0xff, 0x00, 0xff);
+    break;
+  case Color::Violet:
+    SDL_SetRenderDrawColor(renderer, 0xff, 0x00, 0xff, 0xff);
+    break;
+  case Color::Orange:
+    SDL_SetRenderDrawColor(renderer, 0xff, 0x80, 0x00, 0xff);
+    break;
+  case Color::Blue:
+    SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xff, 0xff);
+    break;
+  }
 }
