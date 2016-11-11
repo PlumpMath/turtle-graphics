@@ -211,6 +211,10 @@ void Turtle::left(float value)
         direction += 1.0f;
     }
   direction = newDirection;
+  while (direction < 0)
+    direction += 360;
+  while (direction >= 360)
+    direction -= 360;
 }
 void Turtle::penColor(Color value)
 {
