@@ -181,12 +181,13 @@ void Turtle::forward(float value)
   auto sz = drawing.size();
   auto oldX = x;
   auto oldY = y;
-  while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
-  {
-    move(x, y, x + dx, y + dy);
-    x += dx;
-    y += dy;
-  }
+  if (isVisible)
+    while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
+    {
+      move(x, y, x + dx, y + dy);
+      x += dx;
+      y += dy;
+    }
   drawing.resize(sz);
   move(oldX, oldY, newX, newY);
   x = newX;
@@ -200,14 +201,15 @@ void Turtle::hideTurtle()
 void Turtle::left(float value)
 {
   auto newDirection = direction - value;
-  while (value * (newDirection - direction) < 0)
-  {
-    yeld();
-    if (value > 0)
-      direction -= 1.0f;
-    else
-      direction += 1.0f;
-  }
+  if (isVisible)
+    while (value * (newDirection - direction) < 0)
+    {
+      yeld();
+      if (value > 0)
+        direction -= 1.0f;
+      else
+        direction += 1.0f;
+    }
   direction = newDirection;
 }
 void Turtle::penColor(Color value)
@@ -243,12 +245,13 @@ void Turtle::setXY(float newX, float newY)
   auto sz = drawing.size();
   auto oldX = x;
   auto oldY = y;
-  while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
-  {
-    move(x, y, x + dx, y + dy);
-    x += dx * 0.5f;
-    y += dy * 0.5f;
-  }
+  if (isVisible)
+    while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
+    {
+      move(x, y, x + dx, y + dy);
+      x += dx * 0.5f;
+      y += dy * 0.5f;
+    }
   drawing.resize(sz);
   move(oldX, oldY, newX, newY);
   x = newX;
@@ -320,7 +323,6 @@ void Turtle::loop(coro_t::pull_type &p)
       SDL_RenderDrawLine(renderer, x3, y3, x, y);
     }
     SDL_RenderPresent(renderer);
-    SDL_Delay(1);
   }
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
