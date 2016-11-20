@@ -27,17 +27,20 @@ public:
   void setY(float);
   void showTurtle();
 private:
-  float x = 1280 / 2;
-  float y = 720 / 2;
+  enum { Width = 1280, Height = 720 };
+  float x = Width / 2;
+  float y = Height / 2;
   float direction = -90;
   Color pen = Color::Black;
   Color bg = Color::White;
   bool isVisible = true;
   bool isPenDown = true;
   SDL_Renderer *renderer;
+  SDL_Texture *texture;
   void yeld();
   void move(float x1, float y1, float x2, float y2);
-  typedef boost::coroutines2::coroutine<int> coro_t;
+  enum Command { Draw, Clear, Yeld, Drain };
+  typedef boost::coroutines2::coroutine<Command> coro_t;
   coro_t::push_type sink;
   std::vector<std::tuple<float, float, float, float, Color> > drawing;
   void loop(coro_t::pull_type &p);
@@ -123,7 +126,7 @@ Turtle::~Turtle()
 {
   while (sink)
   {
-    sink(3);
+    sink(Drain);
   }
 }
 
@@ -139,7 +142,10 @@ void Turtle::background(Color value)
 void Turtle::clearScreen()
 {
   drawing.clear();
-  yeld();
+  if (sink)
+    sink(Clear);
+  else
+    throw std::runtime_error("sink");
 }
 void Turtle::move(float x1, float y1, float x2, float y2)
 {
@@ -147,7 +153,7 @@ void Turtle::move(float x1, float y1, float x2, float y2)
   {
     if (isPenDown)
       drawing.push_back(std::make_tuple(x1, y1, x2, y2, pen));
-    sink(1);
+    sink(Draw);
   }
   else
     throw std::runtime_error("sink");
@@ -155,14 +161,17 @@ void Turtle::move(float x1, float y1, float x2, float y2)
 void Turtle::draw()
 {
   drawing.clear();
-  x = 1280 / 2;
-  y = 720 / 2;
+  x = Width / 2;
+  y = Height / 2;
   direction = -90;
   pen = Color::Black;
   bg = Color::White;
   isVisible = true;
   isPenDown = true;
-  yeld();
+  if (sink)
+    sink(Clear);
+  else
+    throw std::runtime_error("sink");
 }
 void Turtle::forward(float value)
 {
@@ -178,9 +187,6 @@ void Turtle::forward(float value)
   auto dy = sin(d * Pi / 180.0f);
   auto newX = x + cos(d * Pi / 180.0f) * value;
   auto newY = y + sin(d * Pi / 180.0f) * value;
-  auto sz = drawing.size();
-  auto oldX = x;
-  auto oldY = y;
   if (isVisible)
     while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
     {
@@ -188,8 +194,7 @@ void Turtle::forward(float value)
       x += dx;
       y += dy;
     }
-  drawing.resize(sz);
-  move(oldX, oldY, newX, newY);
+  move(x, y, newX, newY);
   x = newX;
   y = newY;
 }
@@ -246,9 +251,6 @@ void Turtle::setXY(float newX, float newY)
   auto dy = (newY - y) / distance;
   if (dx == 0 && dy == 0)
     return;
-  auto sz = drawing.size();
-  auto oldX = x;
-  auto oldY = y;
   if (isVisible)
     while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
     {
@@ -256,8 +258,7 @@ void Turtle::setXY(float newX, float newY)
       x += dx * 0.5f;
       y += dy * 0.5f;
     }
-  drawing.resize(sz);
-  move(oldX, oldY, newX, newY);
+  move(x, y, newX, newY);
   x = newX;
   y = newY;
 
@@ -274,7 +275,7 @@ void Turtle::showTurtle()
 void Turtle::yeld()
 {
   if (sink)
-    sink(2);
+    sink(Yeld);
   else
     throw std::runtime_error("sink");
 }
@@ -284,50 +285,84 @@ void Turtle::loop(coro_t::pull_type &p)
   SDL_Window *window;
   if (SDL_Init(SDL_INIT_VIDEO) != 0)
     throw std::runtime_error("SDL_Init(SDL_INIT_VIDEO)");
-  SDL_CreateWindowAndRenderer(1280, 720, SDL_WINDOW_BORDERLESS, &window, &renderer);
+  SDL_CreateWindowAndRenderer(Width, Height, SDL_WINDOW_BORDERLESS, &window, &renderer);
+  texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, Width, Height);
+  SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+
   SDL_SetWindowPosition(window, 65, 126);
+  SDL_SetRenderTarget(renderer, texture);
+  SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0x00);
+  SDL_RenderClear(renderer);
   SDL_Event e;
   bool done = false;
+  auto currentTick = SDL_GetTicks();
   while (!done)
   {
-    while (SDL_PollEvent(&e))
-    {
-      if (e.type == SDL_QUIT)
-        done = true;
-      break;
-    }
-    if (p)
-    {
-      p.get();
-      p();
-    }
-    setRenderDrawColor(bg);
-    SDL_RenderClear(renderer);
-    for (const auto &i: drawing)
-    {
-      setRenderDrawColor(std::get<4>(i));
-      SDL_RenderDrawLine(renderer,
-                         std::get<0>(i),
-                         std::get<1>(i),
-                         std::get<2>(i),
-                         std::get<3>(i));
-    }
     if (isVisible)
     {
-      setRenderDrawColor(pen);
-      auto x1 = x + 20 * cos((direction - 120.0f) * Pi / 180.0f);
-      auto y1 = y + 20 * sin((direction - 120.0f) * Pi / 180.0f);
-      auto x2 = x + 20 * cos((direction) * Pi / 180.0f);
-      auto y2 = y + 20 * sin((direction) * Pi / 180.0f);
-      auto x3 = x + 20 * cos((direction + 120.0f) * Pi / 180.0f);
-      auto y3 = y + 20 * sin((direction + 120.0f) * Pi / 180.0f);
-      SDL_RenderDrawLine(renderer, x, y, x1, y1);
-      SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
-      SDL_RenderDrawLine(renderer, x2, y2, x3, y3);
-      SDL_RenderDrawLine(renderer, x3, y3, x, y);
+      SDL_Delay(1000 / 120);
     }
-    SDL_RenderPresent(renderer);
+    if (!isVisible || SDL_GetTicks() > currentTick)
+    {
+      for (int i = 0; i < 10; ++i)
+        if (p)
+        {
+          switch (p.get())
+          {
+          case Clear:
+            SDL_SetRenderTarget(renderer, texture);
+            SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0x00);
+            SDL_RenderClear(renderer);
+            break;
+          default:
+            break;
+          }
+          p();
+        }
+      SDL_SetRenderTarget(renderer, texture);
+      for (const auto &i: drawing)
+      {
+        setRenderDrawColor(std::get<4>(i));
+        SDL_RenderDrawLine(renderer,
+                           std::get<0>(i),
+                           std::get<1>(i),
+                           std::get<2>(i),
+                           std::get<3>(i));
+      }
+      SDL_SetRenderTarget(renderer, nullptr);
+      drawing.clear();
+    }
+    if (SDL_GetTicks() > currentTick)
+    {
+      while (SDL_PollEvent(&e))
+      {
+        if (e.type == SDL_QUIT)
+          done = true;
+        break;
+      }
+      if (SDL_GetTicks() > currentTick)
+        currentTick += 1000 / 60;
+      setRenderDrawColor(bg);
+      SDL_RenderClear(renderer);
+      SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+      if (isVisible)
+      {
+        setRenderDrawColor(pen);
+        auto x1 = x + 20 * cos((direction - 120.0f) * Pi / 180.0f);
+        auto y1 = y + 20 * sin((direction - 120.0f) * Pi / 180.0f);
+        auto x2 = x + 20 * cos((direction) * Pi / 180.0f);
+        auto y2 = y + 20 * sin((direction) * Pi / 180.0f);
+        auto x3 = x + 20 * cos((direction + 120.0f) * Pi / 180.0f);
+        auto y3 = y + 20 * sin((direction + 120.0f) * Pi / 180.0f);
+        SDL_RenderDrawLine(renderer, x, y, x1, y1);
+        SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+        SDL_RenderDrawLine(renderer, x2, y2, x3, y3);
+        SDL_RenderDrawLine(renderer, x3, y3, x, y);
+      }
+      SDL_RenderPresent(renderer);
+    }
   }
+  SDL_DestroyTexture(texture);
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
   SDL_Quit();
