@@ -40,9 +40,8 @@ private:
   void yeld();
   void move(float x1, float y1, float x2, float y2);
   enum Command { Draw, Clear, Yeld, Drain };
-  typedef boost::coroutines2::coroutine<Command> coro_t;
+  typedef boost::coroutines2::coroutine<std::tuple<Command, float, float, float, float, Color> > coro_t;
   coro_t::push_type sink;
-  std::vector<std::tuple<float, float, float, float, Color> > drawing;
   void loop(coro_t::pull_type &p);
   void setRenderDrawColor(Color);
 };
@@ -141,7 +140,6 @@ void Turtle::background(Color value)
 }
 void Turtle::clearScreen()
 {
-  drawing.clear();
   if (sink)
     sink(Clear);
   else
@@ -152,15 +150,15 @@ void Turtle::move(float x1, float y1, float x2, float y2)
   if (sink)
   {
     if (isPenDown)
-      drawing.push_back(std::make_tuple(x1, y1, x2, y2, pen));
-    sink(Draw);
+      sink(std::make_tuple(Draw, x1, y1, x2, y2, pen));
+    else
+      sink(std::make_tuple(Yeld, x1, y1, x2, y2, pen));
   }
   else
     throw std::runtime_error("sink");
 }
 void Turtle::draw()
 {
-  drawing.clear();
   x = Width / 2;
   y = Height / 2;
   direction = -90;
@@ -169,7 +167,7 @@ void Turtle::draw()
   isVisible = true;
   isPenDown = true;
   if (sink)
-    sink(Clear);
+    sink(std::make_tuple(Clear, 0, 0, 0, 0, pen));
   else
     throw std::runtime_error("sink");
 }
@@ -183,18 +181,23 @@ void Turtle::forward(float value)
     d = d + 180;
     value *= -1;
   }
+  const auto speed = 10;
   auto dx = cos(d * Pi / 180.0f);
   auto dy = sin(d * Pi / 180.0f);
   auto newX = x + cos(d * Pi / 180.0f) * value;
   auto newY = y + sin(d * Pi / 180.0f) * value;
+  auto oldX = x;
+  auto oldY = y;
   if (isVisible)
     while ((newX - x) * dx >= 0 && (newY - y) * dy >= 0)
     {
-      move(x, y, x + dx, y + dy);
-      x += dx;
-      y += dy;
+      move(oldX, oldY, x, y);
+      oldX = x;
+      oldY = y;
+      x += speed * dx;
+      y += speed * dy;
     }
-  move(x, y, newX, newY);
+  move(oldX, oldY, newX, newY);
   x = newX;
   y = newY;
 }
@@ -205,15 +208,16 @@ void Turtle::hideTurtle()
 }
 void Turtle::left(float value)
 {
+  const auto speed = 10.0f;
   auto newDirection = direction - value;
   if (isVisible)
     while (value * (newDirection - direction) < 0)
     {
       yeld();
       if (value > 0)
-        direction -= 1.0f;
+        direction -= speed;
       else
-        direction += 1.0f;
+        direction += speed;
     }
   direction = newDirection;
   while (direction < 0)
@@ -300,37 +304,34 @@ void Turtle::loop(coro_t::pull_type &p)
   {
     if (isVisible)
     {
-      SDL_Delay(1000 / 120);
+      SDL_Delay(1000 / 60);
     }
     if (!isVisible || SDL_GetTicks() > currentTick)
     {
-      for (int i = 0; i < 10; ++i)
-        if (p)
-        {
-          switch (p.get())
-          {
-          case Clear:
-            SDL_SetRenderTarget(renderer, texture);
-            SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0x00);
-            SDL_RenderClear(renderer);
-            break;
-          default:
-            break;
-          }
-          p();
-        }
       SDL_SetRenderTarget(renderer, texture);
-      for (const auto &i: drawing)
+      if (p)
       {
-        setRenderDrawColor(std::get<4>(i));
-        SDL_RenderDrawLine(renderer,
-                           std::get<0>(i),
-                           std::get<1>(i),
-                           std::get<2>(i),
-                           std::get<3>(i));
+        auto cmd = p.get();
+        switch (std::get<0>(cmd))
+        {
+        case Draw:
+          setRenderDrawColor(std::get<5>(cmd));
+          SDL_RenderDrawLine(renderer,
+                             std::get<1>(cmd),
+                             std::get<2>(cmd),
+                             std::get<3>(cmd),
+                             std::get<4>(cmd));
+          break;
+        case Clear:
+          SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0x00);
+          SDL_RenderClear(renderer);
+          break;
+        default:
+          break;
+        }
+        p();
       }
       SDL_SetRenderTarget(renderer, nullptr);
-      drawing.clear();
     }
     if (SDL_GetTicks() > currentTick)
     {
