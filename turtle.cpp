@@ -125,7 +125,7 @@ Turtle::~Turtle()
 {
   while (sink)
   {
-    sink(Drain);
+    sink(std::make_tuple(Drain, 0, 0, 0, 0, pen));
   }
 }
 
@@ -141,7 +141,7 @@ void Turtle::background(Color value)
 void Turtle::clearScreen()
 {
   if (sink)
-    sink(Clear);
+    sink(std::make_tuple(Clear, 0, 0, 0, 0, pen));
   else
     throw std::runtime_error("sink");
 }
@@ -279,7 +279,7 @@ void Turtle::showTurtle()
 void Turtle::yeld()
 {
   if (sink)
-    sink(Yeld);
+    sink(std::make_tuple(Yeld, 0, 0, 0, 0, pen));
   else
     throw std::runtime_error("sink");
 }
